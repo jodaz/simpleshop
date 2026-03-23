@@ -16,8 +16,10 @@ import {
   CreditCard,
   Hash,
   X,
-  GripVertical
+  GripVertical,
+  AlertCircle
 } from 'lucide-react';
+import { ActionModal } from '@/components/ui/ActionModal';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -54,6 +56,8 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Drag and Drop State
   const [draggedOrder, setDraggedOrder] = useState<Order | null>(null);
@@ -87,6 +91,7 @@ export default function AdminOrdersPage() {
   }, [loadOrders]);
 
   const updateOrderStatus = async (orderId: string, status: string) => {
+    setIsUpdating(true);
     // Optimistic UI update
     const previousOrders = [...orders];
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: status as any } : o));
@@ -99,7 +104,7 @@ export default function AdminOrdersPage() {
       });
 
       if (res.ok) {
-        toast.success(`Pedido ${status === 'preparing' ? 'en preparación' : 'actualizado'}`, {
+        toast.success(`Pedido ${status === 'preparing' ? 'en preparación' : status === 'cancelled' ? 'cancelado' : 'actualizado'}`, {
           className: "bg-black text-white rounded-none border border-zinc-800 font-bold uppercase tracking-widest text-[10px]"
         });
         // Reload to sync with server
@@ -107,12 +112,17 @@ export default function AdminOrdersPage() {
         if (selectedOrder?.id === orderId) {
           setSelectedOrder(prev => prev ? { ...prev, status: status as any } : null);
         }
+        if (status === 'cancelled') {
+          setIsCancelModalOpen(false);
+        }
       } else {
         throw new Error('Failed to update');
       }
     } catch (error) {
       setOrders(previousOrders); // Rollback
       toast.error('Error al actualizar estado');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -434,11 +444,7 @@ export default function AdminOrdersPage() {
 
                       {(selectedOrder.status === 'new' || selectedOrder.status === 'preparing') && (
                         <button 
-                          onClick={() => {
-                            if (confirm('¿Deseas cancelar este pedido?')) {
-                              updateOrderStatus(selectedOrder.id, 'cancelled');
-                            }
-                          }}
+                          onClick={() => setIsCancelModalOpen(true)}
                           className="w-full h-14 border-2 border-zinc-200 text-zinc-400 font-black uppercase tracking-[0.2em] text-[10px] hover:text-red-600 hover:border-red-600 transition-all flex items-center justify-center gap-3"
                         >
                           <XCircle size={18} />
@@ -481,6 +487,19 @@ export default function AdminOrdersPage() {
           </div>
         )}
       </AnimatePresence>
+
+      <ActionModal
+        isOpen={isCancelModalOpen}
+        onClose={() => setIsCancelModalOpen(false)}
+        onConfirm={() => updateOrderStatus(selectedOrder!.id, 'cancelled')}
+        variant="danger"
+        title="¿Cancelar Pedido?"
+        description="Esta acción marcará el pedido como cancelado y no podrá ser procesado nuevamente en el flujo normal."
+        confirmLabel="Si, Cancelar Pedido"
+        cancelLabel="No, Regresar"
+        isLoading={isUpdating}
+        icon={<AlertCircle size={48} />}
+      />
     </div>
   );
 }
